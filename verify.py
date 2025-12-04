@@ -19,6 +19,17 @@ except Exception:
     face_recognition = None
     _have_face_recognition = False
 
+try:
+    from gemini_card_detector import (
+        detect_card_type, 
+        extract_card_text, 
+        analyze_card_complete,
+        configure_gemini
+    )
+    _have_gemini = True
+except Exception:
+    _have_gemini = False
+
 
 def pil_from_upload(uploaded_file):
     """Return a PIL.Image from a Streamlit/Python uploaded file-like object."""
@@ -167,3 +178,82 @@ def save_submission(record, csv_path='submissions.csv'):
         return True
     except Exception:
         return False
+
+
+# Gemini API-based functions
+
+def detect_card_type_gemini(pil_img, api_key):
+    """
+    Detect card type using Gemini API.
+    Returns tuple: (card_type, confidence)
+    """
+    if not _have_gemini or pil_img is None:
+        return 'Other', 0.0
+    try:
+        return detect_card_type(pil_img, api_key=api_key)
+    except Exception as e:
+        print(f"Error in detect_card_type_gemini: {e}")
+        return 'Other', 0.0
+
+
+def extract_card_text_gemini(pil_img, card_type=None, api_key=None):
+    """
+    Extract text from card using Gemini Vision API.
+    Returns dict with text_fields, raw_ocr, confidence, success, and message.
+    """
+    if not _have_gemini or pil_img is None:
+        return {
+            "text_fields": {},
+            "raw_ocr": "",
+            "confidence": 0.0,
+            "success": False,
+            "message": "Gemini not available"
+        }
+    try:
+        return extract_card_text(pil_img, card_type=card_type, api_key=api_key)
+    except Exception as e:
+        print(f"Error in extract_card_text_gemini: {e}")
+        return {
+            "text_fields": {},
+            "raw_ocr": "",
+            "confidence": 0.0,
+            "success": False,
+            "message": str(e)
+        }
+
+
+def analyze_card_gemini(pil_img, api_key):
+    """
+    Complete card analysis using Gemini: detect type and extract text.
+    Returns dict with card_type, text_extraction, and analysis metadata.
+    """
+    if not _have_gemini or pil_img is None:
+        return {
+            "card_type": "Other",
+            "card_type_confidence": 0.0,
+            "text_extraction": {
+                "text_fields": {},
+                "raw_ocr": "",
+                "confidence": 0.0,
+                "success": False
+            },
+            "success": False,
+            "message": "Gemini not available"
+        }
+    try:
+        return analyze_card_complete(pil_img, api_key)
+    except Exception as e:
+        print(f"Error in analyze_card_gemini: {e}")
+        return {
+            "card_type": "Other",
+            "card_type_confidence": 0.0,
+            "text_extraction": {
+                "text_fields": {},
+                "raw_ocr": "",
+                "confidence": 0.0,
+                "success": False
+            },
+            "success": False,
+            "message": str(e)
+        }
+

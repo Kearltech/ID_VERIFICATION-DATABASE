@@ -42,3 +42,4 @@ Notes
 - `face_recognition` requires dlib and can be tricky to install on Windows; use the optional features only if you can install the dependencies.
 - The app saves submissions to `submissions.csv` in the project root.
 
+
