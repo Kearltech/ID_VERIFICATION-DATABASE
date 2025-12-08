@@ -27,6 +27,14 @@ except Exception:
     face_recognition = None
     _have_face_recognition = False
 
+# OpenCV face detection as fallback
+try:
+    import cv2
+    _have_opencv = True
+except Exception:
+    cv2 = None
+    _have_opencv = False
+
 try:
     from gemini_card_detector import (
         detect_card_type, 
@@ -114,40 +122,121 @@ def detect_faces(pil_img):
 
 
 def face_match(pil_img1, pil_img2, tolerance=0.6):
-    """Compare two PIL images and return (match_boolean, distance) or (None, None) if unsupported."""
-    if pil_img1 is None or pil_img2 is None or not _have_face_recognition:
-        audit_logger.logger.warning('Face matching unavailable', extra={
+    """Compare two PIL images and return (match_boolean, distance) or (None, None) if unsupported.
+    
+    Uses face_recognition library if available, falls back to OpenCV haar cascade.
+    """
+    if pil_img1 is None or pil_img2 is None:
+        audit_logger.logger.warning('Face matching unavailable - missing image', extra={
             'event': 'face_match_unavailable',
             'has_img1': pil_img1 is not None,
-            'has_img2': pil_img2 is not None,
-            'has_library': _have_face_recognition
+            'has_img2': pil_img2 is not None
         })
         return None, None
-    try:
-        arr1 = np.array(pil_img1)
-        arr2 = np.array(pil_img2)
-        enc1 = face_recognition.face_encodings(arr1)
-        enc2 = face_recognition.face_encodings(arr2)
-        if len(enc1) == 0 or len(enc2) == 0:
-            audit_logger.logger.warning('No faces found in one or both images', extra={
-                'event': 'face_match_no_faces',
-                'faces_img1': len(enc1),
-                'faces_img2': len(enc2)
+    
+    # Try face_recognition first
+    if _have_face_recognition:
+        try:
+            arr1 = np.array(pil_img1)
+            arr2 = np.array(pil_img2)
+            enc1 = face_recognition.face_encodings(arr1)
+            enc2 = face_recognition.face_encodings(arr2)
+            if len(enc1) == 0 or len(enc2) == 0:
+                audit_logger.logger.warning('No faces found in one or both images (face_recognition)', extra={
+                    'event': 'face_match_no_faces',
+                    'faces_img1': len(enc1),
+                    'faces_img2': len(enc2)
+                })
+                # Fall through to OpenCV fallback
+            else:
+                dists = face_recognition.face_distance(enc1, enc2[0])
+                best = float(np.min(dists))
+                match = bool(best <= tolerance)
+                audit_logger.logger.info('Face matching completed (face_recognition)', extra={
+                    'event': 'face_match_success',
+                    'match': match,
+                    'distance': best,
+                    'tolerance': tolerance
+                })
+                return match, best
+        except Exception as e:
+            audit_logger.logger.debug(f'face_recognition failed, trying OpenCV: {e}')
+    
+    # Fallback to OpenCV haar cascade
+    if _have_opencv:
+        try:
+            # Convert PIL images to OpenCV format
+            arr1 = cv2.cvtColor(np.array(pil_img1), cv2.COLOR_RGB2BGR)
+            arr2 = cv2.cvtColor(np.array(pil_img2), cv2.COLOR_RGB2BGR)
+            
+            # Load haar cascade for face detection
+            face_cascade = cv2.CascadeClassifier(
+                cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
+            )
+            
+            # Detect faces
+            faces1 = face_cascade.detectMultiScale(cv2.cvtColor(arr1, cv2.COLOR_BGR2GRAY), 1.3, 5)
+            faces2 = face_cascade.detectMultiScale(cv2.cvtColor(arr2, cv2.COLOR_BGR2GRAY), 1.3, 5)
+            
+            if len(faces1) == 0 or len(faces2) == 0:
+                audit_logger.logger.warning('No faces found in one or both images (OpenCV)', extra={
+                    'event': 'face_match_no_faces_opencv',
+                    'faces_img1': len(faces1),
+                    'faces_img2': len(faces2)
+                })
+                return None, None
+            
+            # Extract face regions and compare
+            x1, y1, w1, h1 = faces1[0]
+            x2, y2, w2, h2 = faces2[0]
+            
+            face_img1 = arr1[y1:y1+h1, x1:x1+w1]
+            face_img2 = arr2[y2:y2+h2, x2:x2+w2]
+            
+            # Resize to same size for comparison
+            face_img1 = cv2.resize(face_img1, (100, 100))
+            face_img2 = cv2.resize(face_img2, (100, 100))
+            
+            # Compute structural similarity (simple approach)
+            # Using histogram comparison as a proxy for face similarity
+            hist1 = cv2.calcHist([face_img1], [0, 1, 2], None, [8, 8, 8], [0, 256, 0, 256, 0, 256])
+            hist2 = cv2.calcHist([face_img2], [0, 1, 2], None, [8, 8, 8], [0, 256, 0, 256, 0, 256])
+            
+            # Normalize histograms
+            hist1 = cv2.normalize(hist1, hist1).flatten()
+            hist2 = cv2.normalize(hist2, hist2).flatten()
+            
+            # Compare using different methods
+            # Bhattacharyya distance (0 = identical, 1 = completely different)
+            distance = cv2.compareHist(hist1, hist2, cv2.HISTCMP_BHATTACHARYYA)
+            
+            # Convert to match score (inverse of distance, with threshold)
+            match_threshold = 0.3  # Lower distance means better match
+            match = bool(distance < match_threshold)
+            
+            audit_logger.logger.info('Face matching completed (OpenCV)', extra={
+                'event': 'face_match_success_opencv',
+                'match': match,
+                'distance': distance,
+                'threshold': match_threshold
             })
-            return False, None
-        dists = face_recognition.face_distance(enc1, enc2[0])
-        best = float(np.min(dists))
-        match = bool(best <= tolerance)
-        audit_logger.logger.info('Face matching completed', extra={
-            'event': 'face_match_success',
-            'match': match,
-            'distance': best,
-            'tolerance': tolerance
-        })
-        return match, best
-    except Exception as e:
-        audit_logger.logger.error(f'Face matching failed: {str(e)}', extra={'event': 'face_match_error', 'error': str(e)})
-        return False, None
+            
+            return match, distance
+            
+        except Exception as e:
+            audit_logger.logger.error(f'OpenCV face matching failed: {str(e)}', extra={
+                'event': 'face_match_error_opencv',
+                'error': str(e)
+            })
+            return None, None
+    
+    # No face matching available
+    audit_logger.logger.warning('Face matching unavailable - no suitable library', extra={
+        'event': 'face_match_unavailable_no_library',
+        'has_face_recognition': _have_face_recognition,
+        'has_opencv': _have_opencv
+    })
+    return None, None
 
 
 # Validation helpers
