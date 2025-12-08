@@ -163,6 +163,11 @@ Respond with a JSON object in this exact format:
             card_type = result.get('card_type', 'Other')
             confidence = float(result.get('confidence', 0.0))
             
+            # Clean up card_type - extract just the type name without description
+            # Handles responses like "Ghana Card" or "Ghana Card - Official national ID card of Ghana"
+            if ' - ' in str(card_type):
+                card_type = card_type.split(' - ')[0].strip()
+            
             # Validate card type
             valid_types = ['Ghana Card', 'Voter ID Card', 'Ghana Passport', 
                           'Ghana Driver\'s License', 'Other']
@@ -414,10 +419,10 @@ def analyze_card_complete(pil_img: Image.Image, api_key: str) -> Dict[str, any]:
     
     try:
         # Step 1: Detect card type
-        card_type, card_confidence = detect_card_type(pil_img)
+        card_type, card_confidence = detect_card_type(pil_img, api_key=api_key)
         
         # Step 2: Extract text with card type hint
-        text_result = extract_card_text(pil_img, card_type=card_type)
+        text_result = extract_card_text(pil_img, card_type=card_type, api_key=api_key)
         
         audit_logger.logger.info('Complete card analysis successful', extra={
             'event': 'card_analysis_success',

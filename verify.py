@@ -340,22 +340,6 @@ def analyze_card_gemini(pil_img, api_key):
                 "success": False
             },
             "success": False,
-            "message": "Gemini not available"
-        }
-    try:
-        return analyze_card_complete(pil_img, api_key)
-    except Exception as e:
-        print(f"Error in analyze_card_gemini: {e}")
-        return {
-            "card_type": "Other",
-            "card_type_confidence": 0.0,
-            "text_extraction": {
-                "text_fields": {},
-                "raw_ocr": "",
-                "confidence": 0.0,
-                "success": False
-            },
-            "success": False,
             "message": str(e)
         }
 

@@ -114,7 +114,8 @@ if st.session_state.card_analysis and use_gemini:
             
             # Option to copy as JSON
             json_output = json.dumps(text_fields, indent=2)
-            st.code(json_output, language='json', label='Extracted Fields as JSON')
+            st.write('**Extracted Fields as JSON:**')
+            st.code(json_output, language='json')
         else:
             st.info('No text fields detected')
         
