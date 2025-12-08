@@ -4,6 +4,14 @@ import re
 import numpy as np
 import pandas as pd
 
+# Phase 2 Integration
+from logger_config import audit_logger
+from validators import InputValidator
+from exceptions import create_error, TextExtractionError, ValidationError
+
+# Phase 3 Integration - OCR Comparison
+from ocr_comparison import compare_user_input_with_ocr
+
 # Optional imports guarded
 try:
     import pytesseract
@@ -49,32 +57,71 @@ def pil_from_upload(uploaded_file):
 def ocr_text_from_image(pil_img):
     """Extract OCR text using pytesseract if available. Returns tuple (text, confidence_flag)."""
     if pil_img is None:
+        audit_logger.logger.warning('OCR attempted on None image', extra={'event': 'ocr_invalid_input'})
         return "", 0.0
     if not _have_pytesseract:
+        audit_logger.logger.warning('pytesseract not available', extra={'event': 'ocr_pytesseract_unavailable'})
         return "", 0.0
     try:
         text = pytesseract.image_to_string(pil_img)
+        audit_logger.logger.info('OCR extraction successful', extra={
+            'event': 'ocr_success',
+            'text_length': len(text) if text else 0,
+            'confidence': 0.8
+        })
         # Confidence estimate is not precise here; return 0.0 to 1.0 placeholder
         return text, 0.8
-    except Exception:
+    except Exception as e:
+        audit_logger.logger.error(f'OCR extraction failed: {str(e)}', extra={'event': 'ocr_error', 'error': str(e)})
         return "", 0.0
 
 
 def detect_faces(pil_img):
     """Return list of face locations (top,right,bottom,left) using face_recognition if available."""
     if pil_img is None or not _have_face_recognition:
+        audit_logger.logger.warning('Face detection unavailable', extra={
+            'event': 'face_detection_unavailable',
+            'has_image': pil_img is not None,
+            'has_library': _have_face_recognition
+        })
         return []
-    arr = np.array(pil_img)
+    
     try:
-        locs = face_recognition.face_locations(arr)
+        # Ensure image is in RGB format for face_recognition
+        if pil_img.mode != 'RGB':
+            pil_img = pil_img.convert('RGB')
+        
+        arr = np.array(pil_img)
+        
+        # Use 'hog' model first (faster, good for portraits), fallback to 'cnn' if needed
+        try:
+            locs = face_recognition.face_locations(arr, model='hog')
+            if not locs:  # If HOG fails, try CNN
+                locs = face_recognition.face_locations(arr, model='cnn')
+        except Exception:
+            # Fallback to default (hog) if model specification fails
+            locs = face_recognition.face_locations(arr)
+        
+        audit_logger.logger.info('Face detection completed', extra={
+            'event': 'face_detection_success',
+            'faces_count': len(locs),
+            'image_shape': arr.shape
+        })
         return locs
-    except Exception:
+    except Exception as e:
+        audit_logger.logger.error(f'Face detection failed: {str(e)}', extra={'event': 'face_detection_error', 'error': str(e)})
         return []
 
 
 def face_match(pil_img1, pil_img2, tolerance=0.6):
     """Compare two PIL images and return (match_boolean, distance) or (None, None) if unsupported."""
     if pil_img1 is None or pil_img2 is None or not _have_face_recognition:
+        audit_logger.logger.warning('Face matching unavailable', extra={
+            'event': 'face_match_unavailable',
+            'has_img1': pil_img1 is not None,
+            'has_img2': pil_img2 is not None,
+            'has_library': _have_face_recognition
+        })
         return None, None
     try:
         arr1 = np.array(pil_img1)
@@ -82,12 +129,24 @@ def face_match(pil_img1, pil_img2, tolerance=0.6):
         enc1 = face_recognition.face_encodings(arr1)
         enc2 = face_recognition.face_encodings(arr2)
         if len(enc1) == 0 or len(enc2) == 0:
+            audit_logger.logger.warning('No faces found in one or both images', extra={
+                'event': 'face_match_no_faces',
+                'faces_img1': len(enc1),
+                'faces_img2': len(enc2)
+            })
             return False, None
         dists = face_recognition.face_distance(enc1, enc2[0])
         best = float(np.min(dists))
         match = bool(best <= tolerance)
+        audit_logger.logger.info('Face matching completed', extra={
+            'event': 'face_match_success',
+            'match': match,
+            'distance': best,
+            'tolerance': tolerance
+        })
         return match, best
-    except Exception:
+    except Exception as e:
+        audit_logger.logger.error(f'Face matching failed: {str(e)}', extra={'event': 'face_match_error', 'error': str(e)})
         return False, None
 
 
@@ -128,6 +187,7 @@ def validate_fields(id_type, entered, ocr_text_raw):
     ocr_text_raw: text string from OCR of card (may be empty)
     Returns: dict of field -> {pass:bool, msg:str}
     """
+    validator = InputValidator()
     o = {}
     ocr = (ocr_text_raw or "").upper()
     id_type = (id_type or "").lower()
@@ -135,6 +195,12 @@ def validate_fields(id_type, entered, ocr_text_raw):
     # Common checks
     idnum = entered.get('id_number', '')
     dob = entered.get('date_of_birth', '')
+
+    audit_logger.logger.info('Field validation started', extra={
+        'event': 'validation_start',
+        'id_type': id_type,
+        'fields_count': len(entered)
+    })
 
     if 'ghana' in id_type:
         o['id_number'] = {'pass': validate_ghana_pin(idnum), 'msg': 'Ghana PIN format GHA-000000000-0 expected'}
@@ -161,6 +227,14 @@ def validate_fields(id_type, entered, ocr_text_raw):
 
     # Overall simple summary
     all_pass = all(v['pass'] for v in o.values()) if o else False
+    
+    audit_logger.logger.info('Field validation completed', extra={
+        'event': 'validation_complete',
+        'id_type': id_type,
+        'passed': all_pass,
+        'fields_validated': len(o)
+    })
+    
     return {'fields': o, 'overall': all_pass}
 
 
@@ -175,8 +249,20 @@ def save_submission(record, csv_path='submissions.csv'):
             df.to_csv(csv_path, mode='a', header=False, index=False)
         else:
             df.to_csv(csv_path, index=False)
+        
+        audit_logger.logger.info('Submission saved to CSV', extra={
+            'event': 'submission_saved',
+            'csv_path': csv_path,
+            'id_type': record.get('id_type'),
+            'validation_passed': record.get('validation_overall')
+        })
         return True
-    except Exception:
+    except Exception as e:
+        audit_logger.logger.error(f'Failed to save submission: {str(e)}', extra={
+            'event': 'submission_save_failed',
+            'error': str(e),
+            'csv_path': csv_path
+        })
         return False
 
 
@@ -254,6 +340,101 @@ def analyze_card_gemini(pil_img, api_key):
                 "success": False
             },
             "success": False,
+            "message": "Gemini not available"
+        }
+    try:
+        return analyze_card_complete(pil_img, api_key)
+    except Exception as e:
+        print(f"Error in analyze_card_gemini: {e}")
+        return {
+            "card_type": "Other",
+            "card_type_confidence": 0.0,
+            "text_extraction": {
+                "text_fields": {},
+                "raw_ocr": "",
+                "confidence": 0.0,
+                "success": False
+            },
+            "success": False,
             "message": str(e)
         }
+
+
+def compare_ocr_with_user_input(id_type, user_data, ocr_data):
+    """
+    Compare OCR-extracted data with user-entered data using intelligent field-level comparison.
+    
+    Args:
+        id_type: Type of ID document (e.g., 'Ghana Card', 'Voter ID')
+        user_data: Dictionary of user-entered field values
+        ocr_data: Dictionary of OCR-extracted field values
+    
+    Returns:
+        Dictionary with comparison results including:
+            - valid: bool - True if comparison passed overall
+            - passed_fields: list - Fields that matched
+            - failed_fields: list - Fields that didn't match
+            - missing_fields: list - Fields with missing values
+            - details: dict - Detailed comparison for each field
+            - message: str - Human-readable summary
+    """
+    try:
+        audit_logger.logger.info('Starting OCR vs user input comparison', extra={
+            'event': 'ocr_comparison_init',
+            'id_type': id_type
+        })
+        
+        # Use phase 3 OCR comparison module
+        result = compare_user_input_with_ocr(id_type, user_data, ocr_data)
+        summary = result.get_summary()
+        
+        # Log detailed results
+        audit_logger.logger.info('OCR comparison completed', extra={
+            'event': 'ocr_comparison_result',
+            'id_type': id_type,
+            'valid': result.is_valid(),
+            'passed_count': summary['passed_count'],
+            'failed_count': summary['failed_count'],
+            'missing_count': summary['missing_count']
+        })
+        
+        # Build response
+        response = {
+            'valid': result.is_valid(),
+            'passed_fields': result.passed_fields,
+            'failed_fields': result.failed_fields,
+            'missing_fields': result.missing_fields,
+            'details': summary['comparisons'],
+            'message': f"Comparison complete: {summary['passed_count']} passed, "
+                      f"{summary['failed_count']} failed, {summary['missing_count']} missing"
+        }
+        
+        # Log field-level details if there are failures
+        if result.failed_fields:
+            for field in result.failed_fields:
+                comp = summary['comparisons'].get(field, {})
+                audit_logger.logger.warning('Field mismatch detected', extra={
+                    'event': 'field_mismatch',
+                    'field': field,
+                    'type': comp.get('type', 'unknown'),
+                    'message': comp.get('message', '')
+                })
+        
+        return response
+    
+    except Exception as e:
+        audit_logger.logger.error('OCR comparison error', extra={
+            'event': 'ocr_comparison_error',
+            'error': str(e)
+        })
+        
+        return {
+            'valid': False,
+            'passed_fields': [],
+            'failed_fields': [],
+            'missing_fields': [],
+            'details': {},
+            'message': f"Comparison error: {str(e)}"
+        }
+
 
