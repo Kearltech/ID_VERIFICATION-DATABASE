@@ -15,7 +15,8 @@ from verify import (
     save_submission,
     analyze_card_gemini,
     detect_card_type_gemini,
-    extract_card_text_gemini
+    extract_card_text_gemini,
+    process_id_card_face
 )
 
 st.set_page_config(page_title='ID Verification with Gemini', layout='wide')
@@ -41,6 +42,8 @@ with st.sidebar:
 # Initialize session state
 if 'card_analysis' not in st.session_state:
     st.session_state.card_analysis = None
+if 'face_detection_result' not in st.session_state:
+    st.session_state.face_detection_result = None
 
 st.header('📸 Step 1: Upload Portrait')
 col1, col2 = st.columns(2)
@@ -67,7 +70,61 @@ if id_file is not None:
     if id_img is not None:
         st.image(id_img, caption='Uploaded ID image', width=400)
         
-        # Automatic analysis if enabled
+        # Process face detection on ID card
+        if st.checkbox('🔍 Detect & Extract Face from ID Card', value=True):
+            with st.spinner('Detecting faces on ID card...'):
+                face_result = process_id_card_face(
+                    id_img, 
+                    passport_img=portrait_img,
+                    save_extracted=True
+                )
+                st.session_state.face_detection_result = face_result
+                
+                if face_result['success']:
+                    st.success(f"✓ {face_result['message']}")
+                    
+                    # Show highlighted image with dotted boxes
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.subheader('📍 Detected Faces (Highlighted)')
+                            st.image(face_result['highlighted_img'], 
+                                    caption=f"{face_result['faces_detected']} face(s) detected using {face_result['detection_method']}", 
+                                    width='stretch')                    with col2:
+                        if face_result['primary_face']:
+                            st.subheader('👤 Extracted Face (Passport Size)')
+                            st.image(face_result['primary_face'], 
+                                    caption='Extracted and resized to standard passport dimensions',
+                                    width=300)
+                    
+                    # Show face comparison if passport provided
+                    if 'comparison' in face_result and portrait_img:
+                        comp = face_result['comparison']
+                        st.subheader('🔬 Face Match Analysis')
+                        
+                        col1, col2, col3 = st.columns(3)
+                        with col1:
+                            match_icon = '✅ MATCH' if comp.get('match') else '❌ NO MATCH'
+                            st.metric('Match Result', match_icon)
+                        with col2:
+                            similarity = comp.get('similarity', 0)
+                            st.metric('Similarity Score', f"{similarity:.1f}%")
+                        with col3:
+                            threshold = comp.get('threshold', 0.6)
+                            st.metric('Threshold', f"{threshold*100:.0f}%")
+                        
+                        # Detailed scores
+                        if 'scores' in comp:
+                            with st.expander('📊 Detailed Comparison Scores'):
+                                scores = comp['scores']
+                                score_df = pd.DataFrame([
+                                    {'Method': k, 'Score': f"{v:.1f}%"} 
+                                    for k, v in scores.items()
+                                ])
+                                st.dataframe(score_df, width='stretch', hide_index=True)
+                else:
+                    st.warning(f"⚠️ {face_result.get('message', 'Face detection failed')}")
+        
+        # Automatic Gemini analysis if enabled
         if auto_analyze and use_gemini and api_key:
             st.subheader('🤖 AI Analysis in Progress...')
             with st.spinner('Analyzing card with Gemini...'):
@@ -110,7 +167,7 @@ if st.session_state.card_analysis and use_gemini:
                     'Value': value
                 })
             df_fields = pd.DataFrame(field_data)
-            st.dataframe(df_fields, use_container_width=True, hide_index=True)
+            st.dataframe(df_fields, width='stretch', hide_index=True)
             
             # Option to copy as JSON
             json_output = json.dumps(text_fields, indent=2)
@@ -189,7 +246,7 @@ if validate_btn and id_img is not None:
                 'Message': v['msg']
             })
         df_results = pd.DataFrame(rows)
-        st.dataframe(df_results, use_container_width=True, hide_index=True)
+        st.dataframe(df_results, width='stretch', hide_index=True)
     
     with col2:
         overall = results['overall']
@@ -244,7 +301,7 @@ try:
         with col1:
             if st.checkbox('Show recent submissions', value=True):
                 st.subheader('Last 10 Submissions')
-                st.dataframe(df_sub.tail(10), use_container_width=True)
+                st.dataframe(df_sub.tail(10), width='stretch')
         
         with col2:
             st.subheader('Validation Summary')
