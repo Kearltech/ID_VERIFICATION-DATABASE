@@ -35,6 +35,13 @@ except Exception:
     cv2 = None
     _have_opencv = False
 
+# Enhanced face comparison module
+try:
+    from face_comparison import compare_passport_to_id, get_face_comparator
+    _have_face_comparison = True
+except Exception:
+    _have_face_comparison = False
+
 try:
     from gemini_card_detector import (
         detect_card_type, 
@@ -124,7 +131,8 @@ def detect_faces(pil_img):
 def face_match(pil_img1, pil_img2, tolerance=0.6):
     """Compare two PIL images and return (match_boolean, distance) or (None, None) if unsupported.
     
-    Uses face_recognition library if available, falls back to OpenCV haar cascade.
+    Uses enhanced face comparison module with multiple methods if available,
+    falls back to OpenCV-only implementation.
     """
     if pil_img1 is None or pil_img2 is None:
         audit_logger.logger.warning('Face matching unavailable - missing image', extra={
@@ -134,7 +142,25 @@ def face_match(pil_img1, pil_img2, tolerance=0.6):
         })
         return None, None
     
-    # Try face_recognition first
+    # Try enhanced face comparison module first (best accuracy)
+    if _have_face_comparison:
+        try:
+            match, score, details = compare_passport_to_id(pil_img1, pil_img2, method='ensemble')
+            if match is not None:
+                # Convert similarity score to distance (inverse)
+                distance = 1.0 - score
+                audit_logger.logger.info('Face matching completed (enhanced)', extra={
+                    'event': 'face_match_success_enhanced',
+                    'match': match,
+                    'similarity': score,
+                    'distance': distance,
+                    'methods': list(details.keys())
+                })
+                return match, distance
+        except Exception as e:
+            audit_logger.logger.debug(f'Enhanced face comparison failed, trying fallback: {e}')
+    
+    # Try face_recognition library
     if _have_face_recognition:
         try:
             arr1 = np.array(pil_img1)
