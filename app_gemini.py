@@ -87,17 +87,19 @@ if id_file is not None:
                     col1, col2 = st.columns(2)
                     with col1:
                         st.subheader('📍 Detected Faces (Highlighted)')
+                        if face_result.get('highlighted_img'):
                             st.image(face_result['highlighted_img'], 
-                                    caption=f"{face_result['faces_detected']} face(s) detected using {face_result['detection_method']}", 
-                                    width='stretch')                    with col2:
-                        if face_result['primary_face']:
+                                caption=f"{face_result.get('faces_detected', 0)} face(s) detected using {face_result.get('detection_method', 'unknown')}", 
+                                width='stretch')
+                    with col2:
+                        if face_result.get('primary_face'):
                             st.subheader('👤 Extracted Face (Passport Size)')
                             st.image(face_result['primary_face'], 
-                                    caption='Extracted and resized to standard passport dimensions',
-                                    width=300)
+                                caption='Extracted and resized to standard passport dimensions',
+                                width=300)
                     
                     # Show face comparison if passport provided
-                    if 'comparison' in face_result and portrait_img:
+                    if face_result.get('comparison') and portrait_img:
                         comp = face_result['comparison']
                         st.subheader('🔬 Face Match Analysis')
                         

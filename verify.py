@@ -675,7 +675,11 @@ def process_id_card_face(id_card_img, passport_img=None, save_extracted=True):
         return {
             'success': False,
             'message': 'ID face detector module not available',
-            'faces_detected': 0
+            'faces_detected': 0,
+            'detection_method': 'none',
+            'highlighted_img': None,
+            'extracted_faces': [],
+            'primary_face': None
         }
     
     try:
@@ -737,7 +741,11 @@ def process_id_card_face(id_card_img, passport_img=None, save_extracted=True):
         return {
             'success': False,
             'message': f'Face processing error: {str(e)}',
-            'faces_detected': 0
+            'faces_detected': 0,
+            'detection_method': 'error',
+            'highlighted_img': None,
+            'extracted_faces': [],
+            'primary_face': None
         }
 
 
