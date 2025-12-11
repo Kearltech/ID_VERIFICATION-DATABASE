@@ -1,0 +1,13 @@
+Card Type Detection Model Summary
+==================================================
+
+Training Samples: 12
+Training Accuracy: 1.0000
+
+Samples per class:
+  Ghana Card: 9
+  Ghana Passport: 3
+
+Model Type: Random Forest Classifier
+Estimators: 100
+Max Depth: 15

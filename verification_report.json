@@ -1,0 +1,18 @@
+{
+  "timestamp": "2025-12-08T03:30:27.512453",
+  "overall_status": "PASS",
+  "checks": {
+    "Imports": true,
+    "Modules": true,
+    "API Methods": true,
+    "Trained Models": true,
+    "Gemini Detector": true,
+    "File Structure": true,
+    "API Integration": true
+  },
+  "summary": {
+    "total_checks": 7,
+    "passed": 7,
+    "failed": 0
+  }
+}

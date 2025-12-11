@@ -1,0 +1,21 @@
+{
+  "Ghana Card": {
+    "name": "[A-Z\\s]+",
+    "id_number": "[A-Z]{2}\\d{7}",
+    "date_of_birth": "\\d{1,2}/\\d{1,2}/\\d{4}",
+    "nationality": "Ghana",
+    "sex": "[MF]",
+    "expiry_date": "\\d{1,2}/\\d{1,2}/\\d{4}"
+  },
+  "Ghana Passport": {
+    "surname": "[A-Z\\s]+",
+    "given_names": "[A-Z\\s]+",
+    "nationality": "Ghana",
+    "date_of_birth": "\\d{1,2}/\\d{1,2}/\\d{4}",
+    "sex": "[MF]",
+    "passport_number": "[A-Z0-9]{8,10}",
+    "issuing_authority": "Ghana",
+    "issue_date": "\\d{1,2}/\\d{1,2}/\\d{4}",
+    "expiry_date": "\\d{1,2}/\\d{1,2}/\\d{4}"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "accuracy": [
+    1.0
+  ],
+  "samples_per_class": {
+    "Ghana Card": 9,
+    "Ghana Passport": 3
+  },
+  "total_samples": 12
+}
