@@ -45,6 +45,11 @@ tzdata==2025.2
 urllib3==2.5.0
 watchdog==6.0.0
 
+# Database Integration
+mysql-connector-python==9.1.0
+SQLAlchemy==2.0.36
+cryptography==44.0.0
+
 # Image Recognition and Face Comparison Libraries
 # Core libraries for image processing and face detection
 imutils==0.5.4

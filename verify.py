@@ -621,8 +621,8 @@ def compare_ocr_with_user_input(id_type, user_data, ocr_data):
                 audit_logger.logger.warning('Field mismatch detected', extra={
                     'event': 'field_mismatch',
                     'field': field,
-                    'type': comp.get('type', 'unknown'),
-                    'message': comp.get('message', '')
+                    'comp_type': comp.get('type', 'unknown'),
+                    'result_msg': comp.get('message', '')  # Renamed to avoid logging conflict
                 })
         
         return response

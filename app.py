@@ -3,7 +3,8 @@ from PIL import Image
 import pandas as pd
 from verify import (
     pil_from_upload, ocr_text_from_image, detect_faces, face_match, 
-    validate_fields, save_submission, compare_ocr_with_user_input
+    validate_fields, save_submission, compare_ocr_with_user_input,
+    extract_card_text_gemini
 )
 import os
 
@@ -187,12 +188,21 @@ if st.button('Run validation'):
     st.table(df_results)
     
     # Phase 3B: OCR Comparison
-    if ocr_text and user_data:
+    if ocr_text and user_data and id_img is not None:
         st.subheader('🔍 OCR vs User Input Comparison')
         
         try:
-            # Extract structured data from OCR text (simplified - in production, use Gemini)
-            ocr_data = user_data.copy()  # Placeholder - real OCR extraction would parse ocr_text
+            # Extract structured data from OCR text using Gemini
+            st.info('🤖 Extracting structured data from ID card using Gemini AI...')
+            extraction = extract_card_text_gemini(id_img, card_type=id_type)
+            
+            if extraction['success'] and extraction['text_fields']:
+                ocr_data = extraction['text_fields']
+                st.success(f"✅ OCR Extraction successful (confidence: {extraction['confidence']:.1%})")
+            else:
+                st.warning(f"⚠️ OCR extraction had issues: {extraction.get('message', 'Unknown error')}")
+                # Fallback: create empty ocr_data to avoid comparison issues
+                ocr_data = {}
             
             # Compare OCR with user input
             comparison = compare_ocr_with_user_input(id_type, user_data, ocr_data)

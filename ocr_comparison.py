@@ -268,9 +268,10 @@ def compare_user_input_with_ocr(
                 'event': 'field_comparison',
                 'field': field_name,
                 'match': match,
-                'type': comp_type,
+                'comp_type': comp_type,  # Renamed from 'type' to avoid conflict
                 'user_value': user_value[:20] if user_value else '',  # Truncate for logging
-                'ocr_value': ocr_value[:20] if ocr_value else ''
+                'ocr_value': ocr_value[:20] if ocr_value else '',
+                'result_message': message  # Renamed from 'message' to avoid logging conflict
             }
         )
     
